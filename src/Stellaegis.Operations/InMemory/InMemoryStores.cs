@@ -45,21 +45,22 @@ public sealed class InMemoryJobStore(TimeProvider clock) : IJobStore
     }
 
     /// <inheritdoc/>
-    public Task<JobRecord?> GetAsync(Space space, Guid jobUniqueId, CancellationToken cancellationToken = default)
+    public Task<JobRecord?> GetAsync(Space space, Guid jobUniqueId, Actor actor, CancellationToken cancellationToken = default)
     {
+        Guard.NotNull(space);
         lock (_lock)
             return Task.FromResult(_jobs.TryGetValue(jobUniqueId, out var job) && job.Space == space ? job : null);
     }
 
     /// <inheritdoc/>
-    public Task<JobRecord?> FindAsync(Guid jobUniqueId, CancellationToken cancellationToken = default)
+    public Task<JobRecord?> FindAsync(Guid jobUniqueId, Actor actor, CancellationToken cancellationToken = default)
     {
         lock (_lock)
             return Task.FromResult(_jobs.GetValueOrDefault(jobUniqueId));
     }
 
     /// <inheritdoc/>
-    public Task<IReadOnlyList<JobRecord>> ListAsync(JobQuery query, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<JobRecord>> ListAsync(JobQuery query, Actor actor, CancellationToken cancellationToken = default)
     {
         Guard.NotNull(query);
         lock (_lock)
@@ -120,6 +121,7 @@ public sealed class InMemoryJobStore(TimeProvider clock) : IJobStore
     /// <inheritdoc/>
     public Task<JobRecord?> CancelAsync(Space space, Guid jobUniqueId, Actor actor, CancellationToken cancellationToken = default)
     {
+        Guard.NotNull(space);
         lock (_lock)
         {
             if (!_jobs.TryGetValue(jobUniqueId, out var job) || job.Space != space)
@@ -135,6 +137,7 @@ public sealed class InMemoryJobStore(TimeProvider clock) : IJobStore
     /// <inheritdoc/>
     public Task<int> PurgeCompartmentAsync(Compartment compartment, Actor actor, CancellationToken cancellationToken = default)
     {
+        Guard.NotNull(compartment);
         lock (_lock)
         {
             var ids = _jobs.Values.Where(job => job.Space.Compartment == compartment).Select(job => job.JobUniqueId).ToList();
@@ -145,7 +148,7 @@ public sealed class InMemoryJobStore(TimeProvider clock) : IJobStore
     }
 
     /// <inheritdoc/>
-    public Task<int> CleanExpiredAsync(CancellationToken cancellationToken = default)
+    public Task<int> CleanExpiredAsync(Actor actor, CancellationToken cancellationToken = default)
     {
         var now = clock.GetUtcNow();
         lock (_lock)
@@ -166,28 +169,28 @@ public sealed class InMemoryScheduleStore : IScheduleStore
     private readonly HashSet<(Guid, DateTimeOffset)> _claimed = [];
 
     /// <inheritdoc/>
-    public Task<IReadOnlyList<Schedule>> ListEnabledAsync(CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<Schedule>> ListEnabledAsync(Actor actor, CancellationToken cancellationToken = default)
     {
         lock (_lock)
             return Task.FromResult<IReadOnlyList<Schedule>>(_schedules.Values.Where(schedule => schedule.Enabled).OrderBy(s => s.CreatedAt).ToList());
     }
 
     /// <inheritdoc/>
-    public Task<IReadOnlyList<Schedule>> ListAsync(Space? space, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<Schedule>> ListAsync(Space? space, Actor actor, CancellationToken cancellationToken = default)
     {
         lock (_lock)
             return Task.FromResult<IReadOnlyList<Schedule>>(_schedules.Values.Where(s => space is null || s.Space == space).OrderBy(s => s.CreatedAt).ToList());
     }
 
     /// <inheritdoc/>
-    public Task<Schedule?> GetAsync(Guid scheduleUniqueId, CancellationToken cancellationToken = default)
+    public Task<Schedule?> GetAsync(Guid scheduleUniqueId, Actor actor, CancellationToken cancellationToken = default)
     {
         lock (_lock)
             return Task.FromResult(_schedules.GetValueOrDefault(scheduleUniqueId));
     }
 
     /// <inheritdoc/>
-    public Task UpsertAsync(Schedule schedule, CancellationToken cancellationToken = default)
+    public Task UpsertAsync(Schedule schedule, Actor actor, CancellationToken cancellationToken = default)
     {
         Guard.NotNull(schedule);
         lock (_lock)
@@ -199,7 +202,7 @@ public sealed class InMemoryScheduleStore : IScheduleStore
     }
 
     /// <inheritdoc/>
-    public Task<bool> RemoveAsync(Guid scheduleUniqueId, CancellationToken cancellationToken = default)
+    public Task<bool> RemoveAsync(Guid scheduleUniqueId, Actor actor, CancellationToken cancellationToken = default)
     {
         lock (_lock)
         {
@@ -209,14 +212,14 @@ public sealed class InMemoryScheduleStore : IScheduleStore
     }
 
     /// <inheritdoc/>
-    public Task<bool> TryClaimOccurrenceAsync(Guid scheduleUniqueId, DateTimeOffset scheduledFor, CancellationToken cancellationToken = default)
+    public Task<bool> TryClaimOccurrenceAsync(Guid scheduleUniqueId, DateTimeOffset scheduledFor, Actor actor, CancellationToken cancellationToken = default)
     {
         lock (_lock)
             return Task.FromResult(_claimed.Add((scheduleUniqueId, scheduledFor)));
     }
 
     /// <inheritdoc/>
-    public Task MarkEvaluatedAsync(Guid scheduleUniqueId, DateTimeOffset through, CancellationToken cancellationToken = default)
+    public Task MarkEvaluatedAsync(Guid scheduleUniqueId, DateTimeOffset through, Actor actor, CancellationToken cancellationToken = default)
     {
         lock (_lock)
         {
@@ -229,6 +232,7 @@ public sealed class InMemoryScheduleStore : IScheduleStore
     /// <inheritdoc/>
     public Task<int> PurgeCompartmentAsync(Compartment compartment, Actor actor, CancellationToken cancellationToken = default)
     {
+        Guard.NotNull(compartment);
         lock (_lock)
         {
             var ids = _schedules.Values.Where(s => s.Space.Compartment == compartment).Select(s => s.ScheduleUniqueId).ToList();

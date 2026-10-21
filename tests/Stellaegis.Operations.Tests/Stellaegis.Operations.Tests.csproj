@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Stellaegis.Operations\Stellaegis.Operations.csproj" />
+    <ProjectReference Include="..\..\src\Stellaegis.Operations.PostgreSQL\Stellaegis.Operations.PostgreSQL.csproj" />
   </ItemGroup>
 
   <ItemGroup>

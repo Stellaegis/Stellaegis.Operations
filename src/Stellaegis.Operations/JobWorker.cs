@@ -154,7 +154,7 @@ public sealed class JobWorker(
     {
         await using var scope = scopes.CreateAsyncScope();
         var store = scope.ServiceProvider.GetRequiredService<IJobStore>();
-        var cleaned = await store.CleanExpiredAsync(cancellationToken).ConfigureAwait(false);
+        var cleaned = await store.CleanExpiredAsync(Actor, cancellationToken).ConfigureAwait(false);
         if (cleaned > 0)
             logger.LogInformation("{Count} expired jobs cleaned.", cleaned);
     }

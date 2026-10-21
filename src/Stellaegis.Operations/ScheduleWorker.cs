@@ -68,7 +68,7 @@ public sealed class ScheduleWorker(
         var now = clock.GetUtcNow();
         var launched = 0;
 
-        foreach (var schedule in await schedules.ListEnabledAsync(cancellationToken).ConfigureAwait(false))
+        foreach (var schedule in await schedules.ListEnabledAsync(Actor, cancellationToken).ConfigureAwait(false))
         {
             IReadOnlyList<DateTimeOffset> due;
             try
@@ -83,7 +83,7 @@ public sealed class ScheduleWorker(
 
             foreach (var occurrence in due)
             {
-                if (!await schedules.TryClaimOccurrenceAsync(schedule.ScheduleUniqueId, occurrence, cancellationToken).ConfigureAwait(false))
+                if (!await schedules.TryClaimOccurrenceAsync(schedule.ScheduleUniqueId, occurrence, Actor, cancellationToken).ConfigureAwait(false))
                     continue;
                 if (!await AdmitAsync(schedule, jobs, cancellationToken).ConfigureAwait(false))
                     continue;
@@ -106,7 +106,7 @@ public sealed class ScheduleWorker(
             // Evaluated up to the last occurrence launched, or up to now when nothing was due: a cycle that could
             // not launch every due occurrence resumes at the last one it launched.
             var through = due.Count == _options.MaxOccurrencesPerEvaluation ? due[^1] : now;
-            await schedules.MarkEvaluatedAsync(schedule.ScheduleUniqueId, through, cancellationToken).ConfigureAwait(false);
+            await schedules.MarkEvaluatedAsync(schedule.ScheduleUniqueId, through, Actor, cancellationToken).ConfigureAwait(false);
         }
         return launched;
     }
@@ -115,7 +115,7 @@ public sealed class ScheduleWorker(
     {
         if (schedule.ConcurrencyPolicy == ConcurrencyPolicy.Allow)
             return true;
-        var inFlight = await jobs.ListAsync(new JobQuery { ScheduleUniqueId = schedule.ScheduleUniqueId, MaxResults = 1000 }, cancellationToken).ConfigureAwait(false);
+        var inFlight = await jobs.ListAsync(new JobQuery { ScheduleUniqueId = schedule.ScheduleUniqueId, MaxResults = 1000 }, Actor, cancellationToken).ConfigureAwait(false);
         var pending = inFlight.Where(job => job.Status == JobStatus.Pending).ToList();
         var running = inFlight.Count(job => job.Status == JobStatus.Running);
         if (pending.Count == 0 && running == 0)

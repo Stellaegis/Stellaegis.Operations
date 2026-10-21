@@ -1,14 +1,9 @@
-using Microsoft.Extensions.Configuration;
 using Stellaegis.Primitives;
 
 namespace Stellaegis.Operations.Tests;
 
-public sealed class ScheduleTests : IDisposable
+public abstract class ScheduleContract(PostgreSqlFixture? postgreSql) : StoreContract(postgreSql)
 {
-    private readonly OperationsHarness _harness = new(configuration: new ConfigurationBuilder()
-        .AddInMemoryCollection(new Dictionary<string, string?> { ["Stellaegis:Operations:MaxOccurrencesPerEvaluation"] = "10" })
-        .Build());
-
     public static Schedule EveryMinute(Space space, ConcurrencyPolicy policy = ConcurrencyPolicy.Forbid, string jobType = "echo") => new()
     {
         ScheduleUniqueId = Guid.NewGuid(),
@@ -46,28 +41,28 @@ public sealed class ScheduleTests : IDisposable
     public async Task The_first_evaluation_launches_nothing_and_marks_where_it_stood()
     {
         var schedule = EveryMinute(Space.Of(OperationsHarness.Acme));
-        await _harness.Schedules.UpsertAsync(schedule);
+        await Harness.Schedules.UpsertAsync(schedule, OperationsHarness.Bob);
 
-        Assert.Equal(0, await _harness.Scheduler.EvaluateOnceAsync());
+        Assert.Equal(0, await Harness.Scheduler.EvaluateOnceAsync());
 
-        Assert.Equal(_harness.Clock.GetUtcNow(), (await _harness.Schedules.GetAsync(schedule.ScheduleUniqueId))!.LastEvaluatedAt);
+        Assert.Equal(Harness.Clock.GetUtcNow(), (await Harness.Schedules.GetAsync(schedule.ScheduleUniqueId, OperationsHarness.Bob))!.LastEvaluatedAt);
     }
 
     [Fact]
     public async Task A_due_occurrence_launches_a_job_of_the_schedule_in_its_space_under_the_scheduler()
     {
         var schedule = EveryMinute(Space.Of(OperationsHarness.Acme));
-        await _harness.Schedules.UpsertAsync(schedule);
-        await _harness.Scheduler.EvaluateOnceAsync();
-        _harness.Clock.Advance(TimeSpan.FromMinutes(1));
+        await Harness.Schedules.UpsertAsync(schedule, OperationsHarness.Bob);
+        await Harness.Scheduler.EvaluateOnceAsync();
+        Harness.Clock.Advance(TimeSpan.FromMinutes(1));
 
-        Assert.Equal(1, await _harness.Scheduler.EvaluateOnceAsync());
+        Assert.Equal(1, await Harness.Scheduler.EvaluateOnceAsync());
 
-        var job = Assert.Single(await _harness.Jobs.ListAsync(new JobQuery()));
+        var job = Assert.Single(await Harness.Jobs.ListAsync(new JobQuery(), OperationsHarness.Bob));
         Assert.Equal(Space.Of(OperationsHarness.Acme), job.Space);
         Assert.Equal(ScheduleWorker.Actor, job.Actor);
         Assert.Equal(schedule.ScheduleUniqueId, job.ScheduleUniqueId);
-        Assert.Equal(_harness.Clock.GetUtcNow(), job.ScheduledFor);
+        Assert.Equal(Harness.Clock.GetUtcNow(), job.ScheduledFor);
         Assert.Equal(JobVisibility.Space, job.Visibility);
     }
 
@@ -75,56 +70,56 @@ public sealed class ScheduleTests : IDisposable
     public async Task The_occurrences_missed_while_the_host_was_down_are_caught_up_from_the_persisted_mark()
     {
         var schedule = EveryMinute(Space.Shared, ConcurrencyPolicy.Allow);
-        await _harness.Schedules.UpsertAsync(schedule);
-        await _harness.Scheduler.EvaluateOnceAsync();
-        _harness.Clock.Advance(TimeSpan.FromMinutes(15));
+        await Harness.Schedules.UpsertAsync(schedule, OperationsHarness.Bob);
+        await Harness.Scheduler.EvaluateOnceAsync();
+        Harness.Clock.Advance(TimeSpan.FromMinutes(15));
 
-        Assert.Equal(10, await _harness.Scheduler.EvaluateOnceAsync());
-        Assert.Equal(5, await _harness.Scheduler.EvaluateOnceAsync());
-        Assert.Equal(0, await _harness.Scheduler.EvaluateOnceAsync());
+        Assert.Equal(10, await Harness.Scheduler.EvaluateOnceAsync());
+        Assert.Equal(5, await Harness.Scheduler.EvaluateOnceAsync());
+        Assert.Equal(0, await Harness.Scheduler.EvaluateOnceAsync());
 
-        Assert.Equal(15, (await _harness.Jobs.ListAsync(new JobQuery { MaxResults = 100 })).Count);
+        Assert.Equal(15, (await Harness.Jobs.ListAsync(new JobQuery { MaxResults = 100 }, OperationsHarness.Bob)).Count);
     }
 
     [Fact]
     public async Task An_occurrence_is_claimed_by_one_worker_only()
     {
         var schedule = EveryMinute(Space.Shared);
-        await _harness.Schedules.UpsertAsync(schedule);
-        var due = _harness.Clock.GetUtcNow();
+        await Harness.Schedules.UpsertAsync(schedule, OperationsHarness.Bob);
+        var due = Harness.Clock.GetUtcNow();
 
-        Assert.True(await _harness.Schedules.TryClaimOccurrenceAsync(schedule.ScheduleUniqueId, due));
-        Assert.False(await _harness.Schedules.TryClaimOccurrenceAsync(schedule.ScheduleUniqueId, due));
+        Assert.True(await Harness.Schedules.TryClaimOccurrenceAsync(schedule.ScheduleUniqueId, due, OperationsHarness.Bob));
+        Assert.False(await Harness.Schedules.TryClaimOccurrenceAsync(schedule.ScheduleUniqueId, due, OperationsHarness.Bob));
     }
 
     [Fact]
     public async Task Forbid_skips_an_occurrence_while_a_job_of_the_schedule_is_in_flight()
     {
-        await _harness.Schedules.UpsertAsync(EveryMinute(Space.Shared, ConcurrencyPolicy.Forbid));
-        await _harness.Scheduler.EvaluateOnceAsync();
-        _harness.Clock.Advance(TimeSpan.FromMinutes(1));
-        await _harness.Scheduler.EvaluateOnceAsync();
-        _harness.Clock.Advance(TimeSpan.FromMinutes(1));
+        await Harness.Schedules.UpsertAsync(EveryMinute(Space.Shared, ConcurrencyPolicy.Forbid), OperationsHarness.Bob);
+        await Harness.Scheduler.EvaluateOnceAsync();
+        Harness.Clock.Advance(TimeSpan.FromMinutes(1));
+        await Harness.Scheduler.EvaluateOnceAsync();
+        Harness.Clock.Advance(TimeSpan.FromMinutes(1));
 
-        Assert.Equal(0, await _harness.Scheduler.EvaluateOnceAsync());
+        Assert.Equal(0, await Harness.Scheduler.EvaluateOnceAsync());
 
-        await _harness.Worker.RunUntilIdleAsync();
-        _harness.Clock.Advance(TimeSpan.FromMinutes(1));
-        Assert.Equal(1, await _harness.Scheduler.EvaluateOnceAsync());
+        await Harness.Worker.RunUntilIdleAsync();
+        Harness.Clock.Advance(TimeSpan.FromMinutes(1));
+        Assert.Equal(1, await Harness.Scheduler.EvaluateOnceAsync());
     }
 
     [Fact]
     public async Task Replace_cancels_the_pending_jobs_of_the_schedule_before_launching()
     {
-        await _harness.Schedules.UpsertAsync(EveryMinute(Space.Shared, ConcurrencyPolicy.Replace));
-        await _harness.Scheduler.EvaluateOnceAsync();
-        _harness.Clock.Advance(TimeSpan.FromMinutes(1));
-        await _harness.Scheduler.EvaluateOnceAsync();
-        _harness.Clock.Advance(TimeSpan.FromMinutes(1));
+        await Harness.Schedules.UpsertAsync(EveryMinute(Space.Shared, ConcurrencyPolicy.Replace), OperationsHarness.Bob);
+        await Harness.Scheduler.EvaluateOnceAsync();
+        Harness.Clock.Advance(TimeSpan.FromMinutes(1));
+        await Harness.Scheduler.EvaluateOnceAsync();
+        Harness.Clock.Advance(TimeSpan.FromMinutes(1));
 
-        Assert.Equal(1, await _harness.Scheduler.EvaluateOnceAsync());
+        Assert.Equal(1, await Harness.Scheduler.EvaluateOnceAsync());
 
-        var jobs = await _harness.Jobs.ListAsync(new JobQuery());
+        var jobs = await Harness.Jobs.ListAsync(new JobQuery(), OperationsHarness.Bob);
         Assert.Equal(2, jobs.Count);
         Assert.Single(jobs, job => job.Status == JobStatus.Cancelled);
         Assert.Single(jobs, job => job.Status == JobStatus.Pending);
@@ -133,13 +128,16 @@ public sealed class ScheduleTests : IDisposable
     [Fact]
     public async Task A_disabled_or_invalid_schedule_launches_nothing()
     {
-        await _harness.Schedules.UpsertAsync(EveryMinute(Space.Shared) with { Enabled = false });
-        await _harness.Schedules.UpsertAsync(EveryMinute(Space.Shared) with { CronExpression = "nonsense" });
-        await _harness.Scheduler.EvaluateOnceAsync();
-        _harness.Clock.Advance(TimeSpan.FromMinutes(1));
+        await Harness.Schedules.UpsertAsync(EveryMinute(Space.Shared) with { Enabled = false }, OperationsHarness.Bob);
+        await Harness.Schedules.UpsertAsync(EveryMinute(Space.Shared) with { CronExpression = "nonsense" }, OperationsHarness.Bob);
+        await Harness.Scheduler.EvaluateOnceAsync();
+        Harness.Clock.Advance(TimeSpan.FromMinutes(1));
 
-        Assert.Equal(0, await _harness.Scheduler.EvaluateOnceAsync());
+        Assert.Equal(0, await Harness.Scheduler.EvaluateOnceAsync());
     }
 
-    public void Dispose() => _harness.Dispose();
 }
+
+public sealed class InMemoryScheduleTests() : ScheduleContract(null);
+
+public sealed class PostgreSqlScheduleTests(PostgreSqlFixture postgreSql) : ScheduleContract(postgreSql), IClassFixture<PostgreSqlFixture>;

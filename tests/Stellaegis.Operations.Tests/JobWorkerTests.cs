@@ -1,23 +1,20 @@
 using System.Text.Json;
-using Microsoft.Extensions.Configuration;
 using Stellaegis.Primitives;
 
 namespace Stellaegis.Operations.Tests;
 
-public sealed class JobWorkerTests : IDisposable
+public abstract class JobWorkerContract(PostgreSqlFixture? postgreSql) : StoreContract(postgreSql)
 {
-    private readonly OperationsHarness _harness = new(configuration: new ConfigurationBuilder()
-        .AddInMemoryCollection(new Dictionary<string, string?> { ["Stellaegis:Operations:MaxConcurrentJobs"] = "2" })
-        .Build());
+    protected override IReadOnlyDictionary<string, string?> Settings => new Dictionary<string, string?> { ["Stellaegis:Operations:MaxConcurrentJobs"] = "2" };
 
     [Fact]
     public async Task A_handler_runs_in_the_space_of_the_job_on_behalf_of_its_actor_through_the_worker()
     {
-        var job = await _harness.LaunchAsync("echo", input: new { name = "x" });
+        var job = await Harness.LaunchAsync("echo", input: new { name = "x" });
 
-        Assert.Equal(1, await _harness.Worker.RunUntilIdleAsync());
+        Assert.Equal(1, await Harness.Worker.RunUntilIdleAsync());
 
-        var done = (await _harness.Jobs.FindAsync(job.JobUniqueId))!;
+        var done = (await Harness.Jobs.FindAsync(job.JobUniqueId, OperationsHarness.Bob))!;
         Assert.Equal(JobStatus.Succeeded, done.Status);
         Assert.Equal("acme", done.Result!.Value.GetProperty("space").GetString());
         Assert.Equal("jane", done.Result!.Value.GetProperty("actor").GetString());
@@ -33,11 +30,11 @@ public sealed class JobWorkerTests : IDisposable
     [Fact]
     public async Task A_failure_meant_for_the_caller_keeps_its_code_and_message()
     {
-        var job = await _harness.LaunchAsync("refuse");
+        var job = await Harness.LaunchAsync("refuse");
 
-        await _harness.Worker.RunUntilIdleAsync();
+        await Harness.Worker.RunUntilIdleAsync();
 
-        var failed = (await _harness.Jobs.FindAsync(job.JobUniqueId))!;
+        var failed = (await Harness.Jobs.FindAsync(job.JobUniqueId, OperationsHarness.Bob))!;
         Assert.Equal(JobStatus.Failed, failed.Status);
         var failure = failed.Result!.Value.Deserialize<JobFailure>(JobJson.Options)!;
         Assert.Equal("Quota.Exceeded", failure.Code);
@@ -48,11 +45,11 @@ public sealed class JobWorkerTests : IDisposable
     [Fact]
     public async Task Any_other_failure_keeps_only_a_code_and_a_log_identifier()
     {
-        var job = await _harness.LaunchAsync("crash");
+        var job = await Harness.LaunchAsync("crash");
 
-        await _harness.Worker.RunUntilIdleAsync();
+        await Harness.Worker.RunUntilIdleAsync();
 
-        var failed = (await _harness.Jobs.FindAsync(job.JobUniqueId))!;
+        var failed = (await Harness.Jobs.FindAsync(job.JobUniqueId, OperationsHarness.Bob))!;
         Assert.Equal(JobStatus.Failed, failed.Status);
         var failure = failed.Result!.Value.Deserialize<JobFailure>(JobJson.Options)!;
         Assert.Equal(JobErrors.Failed, failure.Code);
@@ -65,21 +62,21 @@ public sealed class JobWorkerTests : IDisposable
     public async Task The_worker_runs_no_more_jobs_at_once_than_configured()
     {
         for (var i = 0; i < 3; i++)
-            await _harness.LaunchAsync("block");
+            await Harness.LaunchAsync("block");
 
-        await _harness.Worker.RunOnceAsync();
-        await _harness.Worker.RunOnceAsync();
+        await Harness.Worker.RunOnceAsync();
+        await Harness.Worker.RunOnceAsync();
 
-        Assert.Equal(2, (await _harness.Jobs.ListAsync(new JobQuery { Status = JobStatus.Running })).Count);
-        Assert.Single(await _harness.Jobs.ListAsync(new JobQuery { Status = JobStatus.Pending }));
-        await WaitForAsync(() => Task.FromResult(_harness.Gate.Entered == 2));
+        Assert.Equal(2, (await Harness.Jobs.ListAsync(new JobQuery { Status = JobStatus.Running }, OperationsHarness.Bob)).Count);
+        Assert.Single(await Harness.Jobs.ListAsync(new JobQuery { Status = JobStatus.Pending }, OperationsHarness.Bob));
+        await WaitForAsync(() => Task.FromResult(Harness.Gate.Entered == 2));
 
-        _harness.Gate.Open();
-        await WaitForAsync(async () => (await _harness.Jobs.ListAsync(new JobQuery { Status = JobStatus.Succeeded })).Count == 2);
+        Harness.Gate.Open();
+        await WaitForAsync(async () => (await Harness.Jobs.ListAsync(new JobQuery { Status = JobStatus.Succeeded }, OperationsHarness.Bob)).Count == 2);
         await WaitForAsync(async () =>
         {
-            await _harness.Worker.RunOnceAsync();
-            return (await _harness.Jobs.ListAsync(new JobQuery { Status = JobStatus.Succeeded })).Count == 3;
+            await Harness.Worker.RunOnceAsync();
+            return (await Harness.Jobs.ListAsync(new JobQuery { Status = JobStatus.Succeeded }, OperationsHarness.Bob)).Count == 3;
         });
     }
 
@@ -87,9 +84,9 @@ public sealed class JobWorkerTests : IDisposable
     public async Task Concurrent_claims_never_hand_the_same_job_twice()
     {
         for (var i = 0; i < 20; i++)
-            await _harness.LaunchAsync("echo");
+            await Harness.LaunchAsync("echo");
 
-        var claims = await Task.WhenAll(Enumerable.Range(0, 50).Select(_ => Task.Run(() => _harness.Jobs.ClaimAsync(1, TimeSpan.FromMinutes(1), JobWorker.Actor))));
+        var claims = await Task.WhenAll(Enumerable.Range(0, 50).Select(_ => Task.Run(() => Harness.Jobs.ClaimAsync(1, TimeSpan.FromMinutes(1), JobWorker.Actor))));
 
         var ids = claims.SelectMany(claimed => claimed).Select(job => job.JobUniqueId).ToList();
         Assert.Equal(20, ids.Count);
@@ -99,26 +96,26 @@ public sealed class JobWorkerTests : IDisposable
     [Fact]
     public async Task A_running_job_whose_claim_expired_is_claimed_again()
     {
-        var job = await _harness.LaunchAsync("echo");
-        await _harness.Jobs.ClaimAsync(1, TimeSpan.FromMinutes(10), JobWorker.Actor);
+        var job = await Harness.LaunchAsync("echo");
+        await Harness.Jobs.ClaimAsync(1, TimeSpan.FromMinutes(10), JobWorker.Actor);
 
-        Assert.Empty(await _harness.Jobs.ClaimAsync(1, TimeSpan.FromMinutes(10), JobWorker.Actor));
-        _harness.Clock.Advance(TimeSpan.FromMinutes(11));
-        Assert.Equal(job.JobUniqueId, Assert.Single(await _harness.Jobs.ClaimAsync(1, TimeSpan.FromMinutes(10), JobWorker.Actor)).JobUniqueId);
+        Assert.Empty(await Harness.Jobs.ClaimAsync(1, TimeSpan.FromMinutes(10), JobWorker.Actor));
+        Harness.Clock.Advance(TimeSpan.FromMinutes(11));
+        Assert.Equal(job.JobUniqueId, Assert.Single(await Harness.Jobs.ClaimAsync(1, TimeSpan.FromMinutes(10), JobWorker.Actor)).JobUniqueId);
     }
 
     [Fact]
     public async Task Completed_jobs_past_their_retention_are_cleaned()
     {
-        var done = await _harness.LaunchAsync("echo");
-        await _harness.Worker.RunUntilIdleAsync();
-        var pending = await _harness.LaunchAsync("echo");
+        var done = await Harness.LaunchAsync("echo");
+        await Harness.Worker.RunUntilIdleAsync();
+        var pending = await Harness.LaunchAsync("echo");
 
-        _harness.Clock.Advance(TimeSpan.FromDays(8));
+        Harness.Clock.Advance(TimeSpan.FromDays(8));
 
-        Assert.Equal(1, await _harness.Jobs.CleanExpiredAsync());
-        Assert.Null(await _harness.Jobs.FindAsync(done.JobUniqueId));
-        Assert.NotNull(await _harness.Jobs.FindAsync(pending.JobUniqueId));
+        Assert.Equal(1, await Harness.Jobs.CleanExpiredAsync(OperationsHarness.Bob));
+        Assert.Null(await Harness.Jobs.FindAsync(done.JobUniqueId, OperationsHarness.Bob));
+        Assert.NotNull(await Harness.Jobs.FindAsync(pending.JobUniqueId, OperationsHarness.Bob));
     }
 
     private static async Task WaitForAsync(Func<Task<bool>> condition)
@@ -132,5 +129,8 @@ public sealed class JobWorkerTests : IDisposable
         Assert.Fail("The condition was not met in time.");
     }
 
-    public void Dispose() => _harness.Dispose();
 }
+
+public sealed class InMemoryJobWorkerTests() : JobWorkerContract(null);
+
+public sealed class PostgreSqlJobWorkerTests(PostgreSqlFixture postgreSql) : JobWorkerContract(postgreSql), IClassFixture<PostgreSqlFixture>;

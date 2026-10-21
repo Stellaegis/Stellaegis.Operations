@@ -2,12 +2,13 @@ using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Stellaegis.Operations.PostgreSQL;
 using Stellaegis.Primitives;
 using Stellaegis.Primitives.Hosting;
 
 namespace Stellaegis.Operations.Tests;
 
-/// <summary>The module on its in-memory stores, with the test handlers, driven by a test clock.</summary>
+/// <summary>The module on one of its stores, with the test handlers, driven by a test clock.</summary>
 public sealed class OperationsHarness : IDisposable
 {
     public static readonly Compartment Acme = Compartment.Parse("acme");
@@ -15,15 +16,24 @@ public sealed class OperationsHarness : IDisposable
     public static readonly Actor Jane = Actor.Parse("jane");
     public static readonly Actor Bob = Actor.Parse("bob");
 
-    public OperationsHarness(Action<IServiceCollection>? configure = null, IConfiguration? configuration = null)
+    /// <param name="postgreSql">The connection string of a PostgreSQL store, or <see langword="null"/> for the in-memory one.</param>
+    /// <param name="settings">The settings of <c>Stellaegis:Operations</c>.</param>
+    public OperationsHarness(string? postgreSql = null, IReadOnlyDictionary<string, string?>? settings = null)
     {
+        var values = new Dictionary<string, string?>(settings ?? new Dictionary<string, string?>());
+        if (postgreSql is not null)
+            values["Stellaegis:Operations:PostgreSQL:ConnectionString"] = postgreSql;
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(values).Build();
+
         var services = new ServiceCollection()
             .AddLogging()
-            .AddStellaegisFrame(ApplicationFrame.ManyCompartments().WithSharedSpace())
+            .AddStellaegisFrame(PostgreSqlFixture.Frame)
             .AddSingleton<TimeProvider>(Clock)
             .AddSingleton<Gate>();
-        configure?.Invoke(services);
-        services.AddStellaegisOperationsInMemory(configuration ?? new ConfigurationBuilder().Build(), handlers => handlers.AddFromAssemblyOf<OperationsHarness>());
+        if (postgreSql is null)
+            services.AddStellaegisOperationsInMemory(configuration, handlers => handlers.AddFromAssemblyOf<OperationsHarness>());
+        else
+            services.AddStellaegisOperationsPostgreSQL(configuration, handlers => handlers.AddFromAssemblyOf<OperationsHarness>());
         Provider = services.BuildServiceProvider();
     }
 
@@ -56,6 +66,40 @@ public sealed class OperationsHarness : IDisposable
     }
 
     public void Dispose() => Provider.Dispose();
+}
+
+/// <summary>
+/// A test class run on each store: the in-memory one, and the PostgreSQL one when a server answers. The tests
+/// of a derived class use <see cref="Harness"/>, built fresh for each test.
+/// </summary>
+public abstract class StoreContract : IAsyncLifetime
+{
+    private readonly PostgreSqlFixture? _postgreSql;
+
+    protected StoreContract(PostgreSqlFixture? postgreSql) => _postgreSql = postgreSql;
+
+    protected OperationsHarness Harness { get; private set; } = null!;
+
+    /// <summary>The settings of <c>Stellaegis:Operations</c> for the class.</summary>
+    protected virtual IReadOnlyDictionary<string, string?>? Settings => null;
+
+    public async ValueTask InitializeAsync()
+    {
+        if (_postgreSql is null)
+        {
+            Harness = new OperationsHarness(settings: Settings);
+            return;
+        }
+        Assert.SkipWhen(_postgreSql.Unavailable is not null, _postgreSql.Unavailable ?? string.Empty);
+        await _postgreSql.ResetAsync();
+        Harness = new OperationsHarness(_postgreSql.AppConnectionString, Settings);
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        Harness?.Dispose();
+        return ValueTask.CompletedTask;
+    }
 }
 
 /// <summary>What the blocking handler waits on, released by the test.</summary>

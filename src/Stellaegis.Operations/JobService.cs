@@ -73,24 +73,24 @@ internal sealed class JobService(
             throw new UnknownJobTypeException(request.JobType);
         var expiresAt = request.ExpiresAt ?? clock.GetUtcNow() + options.Value.JobRetention;
         var id = await jobs.CreateAsync(request, expiresAt, cancellationToken).ConfigureAwait(false);
-        return await jobs.GetAsync(request.Space, id, cancellationToken).ConfigureAwait(false)
+        return await jobs.GetAsync(request.Space, id, request.Actor, cancellationToken).ConfigureAwait(false)
             ?? throw new InvalidOperationException($"The job {id} was created and cannot be read back.");
     }
 
     public Task<JobRecord?> GetAsync(Space space, Guid jobUniqueId, Actor actor, CancellationToken cancellationToken = default)
-        => jobs.GetAsync(Guard.NotNull(space), jobUniqueId, cancellationToken);
+        => jobs.GetAsync(Guard.NotNull(space), jobUniqueId, Guard.NotNull(actor), cancellationToken);
 
     public Task<IReadOnlyList<JobRecord>> ListAsync(Space space, JobQuery query, Actor actor, CancellationToken cancellationToken = default)
-        => jobs.ListAsync(Guard.NotNull(query) with { Space = Guard.NotNull(space) }, cancellationToken);
+        => jobs.ListAsync(Guard.NotNull(query) with { Space = Guard.NotNull(space) }, Guard.NotNull(actor), cancellationToken);
 
     public Task<JobRecord?> CancelAsync(Space space, Guid jobUniqueId, Actor actor, CancellationToken cancellationToken = default)
         => jobs.CancelAsync(Guard.NotNull(space), jobUniqueId, Guard.NotNull(actor), cancellationToken);
 
     public Task<JobRecord?> FindAsync(Guid jobUniqueId, Actor actor, CancellationToken cancellationToken = default)
-        => jobs.FindAsync(jobUniqueId, cancellationToken);
+        => jobs.FindAsync(jobUniqueId, Guard.NotNull(actor), cancellationToken);
 
     public Task<IReadOnlyList<JobRecord>> OverseeAsync(JobQuery query, Actor actor, CancellationToken cancellationToken = default)
-        => jobs.ListAsync(Guard.NotNull(query), cancellationToken);
+        => jobs.ListAsync(Guard.NotNull(query), Guard.NotNull(actor), cancellationToken);
 
     public async Task<int> PurgeCompartmentAsync(Compartment compartment, Actor actor, CancellationToken cancellationToken = default)
     {
