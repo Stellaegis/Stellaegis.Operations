@@ -3,8 +3,8 @@ using Stellaegis.Primitives;
 
 namespace Stellaegis.Operations;
 
-/// <summary>What a caller sends to launch a job on the routes of the module.</summary>
-public sealed record LaunchJobRequest(string JobType, JsonElement? Input = null, JobVisibility? Visibility = null, string? IdempotencyKey = null);
+/// <summary>What a caller sends to launch a job on the routes of the module; the visibility is <c>initiator_only</c> or <c>space</c>.</summary>
+public sealed record LaunchJobRequest(string? JobType, JsonElement? Input = null, string? Visibility = null, string? IdempotencyKey = null);
 
 /// <summary>A job as the routes of the module answer it.</summary>
 public sealed record JobView(
@@ -29,18 +29,19 @@ public sealed record JobView(
         Guard.NotNull(job).JobUniqueId, job.JobType, Lower(job.Status), Lower(job.Visibility), job.Space.Compartment?.Value, job.Actor.Value,
         job.Input, job.Result, job.Progress, job.ProgressLabel, job.CreatedAt, job.StartedAt, job.CompletedAt, job.ScheduleUniqueId, job.ScheduledFor);
 
-    private static string Lower<T>(T value) where T : struct, Enum => value.ToString().ToLowerInvariant();
+    internal static string Lower<T>(T value) where T : struct, Enum
+        => string.Concat(value.ToString().Select((c, i) => i > 0 && char.IsUpper(c) ? "_" + char.ToLowerInvariant(c) : char.ToLowerInvariant(c).ToString()));
 }
 
-/// <summary>What the administration sends to create or change a schedule.</summary>
+/// <summary>What the administration sends to create or change a schedule; the policy is <c>forbid</c>, <c>allow</c> or <c>replace</c>, the compartment <see langword="null"/> for the shared space.</summary>
 public sealed record ScheduleRequest(
-    string Name,
-    string CronExpression,
-    string JobType,
+    string? Name,
+    string? CronExpression,
+    string? JobType,
     string? Compartment = null,
     string? TimeZoneId = null,
     JsonElement? Input = null,
-    ConcurrencyPolicy? ConcurrencyPolicy = null,
+    string? ConcurrencyPolicy = null,
     bool? Enabled = null);
 
 /// <summary>A schedule as the routes of the module answer it.</summary>
@@ -61,6 +62,6 @@ public sealed record ScheduleView(
     /// <summary>The view of a schedule.</summary>
     public static ScheduleView Of(Schedule schedule) => new(
         Guard.NotNull(schedule).ScheduleUniqueId, schedule.Name, schedule.CronExpression, schedule.TimeZoneId, schedule.JobType,
-        schedule.Space.Compartment?.Value, schedule.Input, schedule.ConcurrencyPolicy.ToString().ToLowerInvariant(), schedule.Enabled,
+        schedule.Space.Compartment?.Value, schedule.Input, JobView.Lower(schedule.ConcurrencyPolicy), schedule.Enabled,
         schedule.CreatedBy.Value, schedule.CreatedAt, schedule.LastEvaluatedAt);
 }
