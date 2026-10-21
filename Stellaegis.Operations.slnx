@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Stellaegis.Operations/Stellaegis.Operations.csproj" />
+    <Project Path="src/Stellaegis.Operations.PostgreSQL/Stellaegis.Operations.PostgreSQL.csproj" />
+    <Project Path="src/Stellaegis.Operations.AspNetCore/Stellaegis.Operations.AspNetCore.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Stellaegis.Operations.Tests/Stellaegis.Operations.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Stellaegis.Operations.AspNetCore</RootNamespace>
+    <PackageId>Stellaegis.Operations.AspNetCore</PackageId>
+    <Description>ASP.NET Core endpoints for Stellaegis.Operations: launch, follow and cancel the jobs of a space, mapped on a group the host provides; and the administration of the schedules and the purge, acting on spaces.</Description>
+    <PackageTags>stellaegis;operations;jobs;scheduler;aspnetcore</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Stellaegis.Operations\Stellaegis.Operations.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Stellaegis.Primitives.AspNetCore" />
+  </ItemGroup>
+
+</Project>

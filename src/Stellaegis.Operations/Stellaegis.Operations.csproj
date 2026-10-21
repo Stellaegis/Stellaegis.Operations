@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Stellaegis.Operations</RootNamespace>
+    <PackageId>Stellaegis.Operations</PackageId>
+    <Description>Jobs run outside requests, in a compartment or on the assembly: launched by a user, claimed and run by a worker that reports progress and outcome, or fired by a cron schedule. The core, with in-memory stores for development.</Description>
+    <PackageTags>stellaegis;operations;jobs;background;scheduler;cron</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Cronos" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Stellaegis.Primitives" />
+    <PackageReference Include="Stellaegis.Primitives.Hosting" />
+    <InternalsVisibleTo Include="Stellaegis.Operations.Tests" />
+  </ItemGroup>
+
+</Project>
