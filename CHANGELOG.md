@@ -5,6 +5,29 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.0.3] — 2026-11-16
+
+On `Stellaegis.Primitives` 6.0.0, whose `Stellaegis.Primitives.Data` no longer references Dapper: an application
+that takes the PostgreSQL adapter of the jobs no longer receives Dapper through it. What the packages do is
+unchanged.
+
+### Changed
+
+- **`Stellaegis.Primitives` 6.0.0 and Microsoft.Extensions 10.0.15.** Nothing changes in this module's code. The
+  adapter stopped using Dapper in 5.0.2; until this version it still came with `Stellaegis.Primitives.Data` 5.x,
+  which the adapter references.
+
+### Updating from 5.0.2
+
+Take the version: a host has nothing to change in what it asks of this module. The version brings Primitives 6.0.0
+to the host, and two things follow from that, both described in the CHANGELOG of Primitives, § *Updating from 5.6.0*:
+
+1. **The other packages of the family the host references take a version that runs without what
+   `Stellaegis.Primitives.Data` 6.0.0 removed.** That section lists the least version of each. An older PostgreSQL
+   or SQL Server adapter restores on Primitives 6 and fails at its first query.
+2. **Code of the host that used Dapper without referencing it now references it itself**: Dapper came through
+   the adapter, and no longer does.
+
 ## [5.0.2] — 2026-11-16
 
 The stores talk to PostgreSQL through Npgsql, and the adapter no longer references Dapper. What the packages do is
