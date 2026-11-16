@@ -12,7 +12,6 @@ alongside them, each under its own license.
 | Stellaegis.Primitives.Data | `Stellaegis.Operations.PostgreSQL` | MIT | <https://github.com/Stellaegis/Stellaegis.Primitives> |
 | Stellaegis.Primitives.AspNetCore | `Stellaegis.Operations.AspNetCore` | MIT | <https://github.com/Stellaegis/Stellaegis.Primitives> |
 | Cronos | all packages | MIT | <https://github.com/HangfireIO/Cronos> |
-| Dapper | `Stellaegis.Operations.PostgreSQL` | Apache-2.0 | <https://github.com/DapperLib/Dapper> |
 | Npgsql | `Stellaegis.Operations.PostgreSQL` | PostgreSQL | <https://github.com/npgsql/npgsql> |
 | Microsoft.Extensions.\* | all packages | MIT | <https://github.com/dotnet> |
 

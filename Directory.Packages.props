@@ -13,7 +13,6 @@
     <!-- Microsoft.Extensions -->
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.14" />
     <!-- Data access -->
-    <PackageVersion Include="Dapper" Version="2.1.89" />
     <PackageVersion Include="Npgsql" Version="10.0.3" />
     <!-- Testing -->
     <PackageVersion Include="xunit.v3" Version="4.0.3" />
